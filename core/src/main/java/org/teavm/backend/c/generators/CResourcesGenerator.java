@@ -27,7 +27,7 @@ import org.teavm.backend.c.generate.CodeGeneratorUtil;
 import org.teavm.backend.c.runtime.CResources;
 import org.teavm.classlib.ResourceSupplier;
 import org.teavm.classlib.ResourceSupplierContext;
-import org.teavm.extension.ExtensionEnvironment;
+import org.teavm.extension.ExtensionEnvironmentImpl;
 import org.teavm.extension.spi.resources.ResourcesPolicy;
 import org.teavm.interop.Address;
 import org.teavm.model.CallLocation;
@@ -47,10 +47,10 @@ public class CResourcesGenerator implements Generator {
     private Properties properties;
     private ResourceProvider resourceProvider;
     private ClassLoader classLoader;
-    private ExtensionEnvironment extensionEnv;
+    private ExtensionEnvironmentImpl extensionEnv;
 
     public CResourcesGenerator(Properties properties, ResourceProvider resourceProvider,
-            ClassLoader classLoader, ExtensionEnvironment extensionEnv) {
+            ClassLoader classLoader, ExtensionEnvironmentImpl extensionEnv) {
         this.properties = properties;
         this.resourceProvider = resourceProvider;
         this.classLoader = classLoader;
@@ -74,7 +74,7 @@ public class CResourcesGenerator implements Generator {
                 resourceSet.addAll(Arrays.asList(resources));
             }
         }
-        for (var policy : ServiceLoader.load(ResourcesPolicy.class, classLoader)) {
+        for (var policy : extensionEnv.createPolicies(ResourcesPolicy.class)) {
             policy.initialize(extensionEnv);
             var resources = policy.supplyResources(classSource.getClassNames());
             if (resources != null) {

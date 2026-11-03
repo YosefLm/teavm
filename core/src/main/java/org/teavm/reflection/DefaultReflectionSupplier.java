@@ -21,7 +21,6 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.teavm.classlib.ProxyInterfaceConsumer;
@@ -43,7 +42,7 @@ public class DefaultReflectionSupplier implements ReflectionSupplier {
 
     public DefaultReflectionSupplier(ExtensionEnvironmentImpl env) {
         this.env = env;
-        for (var policy : ServiceLoader.load(ReflectionPolicy.class, env.classLoader())) {
+        for (var policy : env.createPolicies(ReflectionPolicy.class)) {
             policy.initialize(env);
             policies.add(policy);
         }

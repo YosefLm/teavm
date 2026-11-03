@@ -50,6 +50,8 @@ import org.teavm.diagnostics.AccumulationDiagnostics;
 import org.teavm.diagnostics.Diagnostics;
 import org.teavm.diagnostics.ProblemProvider;
 import org.teavm.extension.ExtensionEnvironment;
+import org.teavm.extension.ExtensionEnvironmentImpl;
+import org.teavm.extension.ExtensionPolicyProvider;
 import org.teavm.model.BasicBlock;
 import org.teavm.model.ClassHierarchy;
 import org.teavm.model.ClassHolder;
@@ -233,6 +235,13 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
     @Override
     public void add(MethodReference methodRef, DependencyPlugin dependencyPlugin) {
         dependencyAnalyzer.addDependencyPlugin(methodRef, dependencyPlugin);
+    }
+
+    /**
+     * Adds provider of extension policies, which are used along with policies registered as services.
+     */
+    public void addExtensionPolicyProvider(ExtensionPolicyProvider provider) {
+        dependencyAnalyzer.extensionEnvironment().addPolicyProvider(provider);
     }
 
     @Override
@@ -1019,7 +1028,7 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
         }
 
         @Override
-        public ExtensionEnvironment extensionEnvironment() {
+        public ExtensionEnvironmentImpl extensionEnvironment() {
             return dependencyAnalyzer.extensionEnvironment();
         }
     };

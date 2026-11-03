@@ -1,0 +1,58 @@
+/*
+ *  Copyright 2026 Alexey Andreev.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+package org.teavm.extension.bridge.guest;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ServiceLoader;
+import java.util.Set;
+import org.teavm.extension.bridge.BridgeGuest;
+import org.teavm.extension.bridge.BridgeHost;
+import org.teavm.extension.spi.reflection.ReflectionPolicy;
+import org.teavm.extension.spi.resources.ResourcesPolicy;
+import org.teavm.jso.JSExport;
+
+/**
+ * Entry point of guest module, i.e. module that contains extensions and is compiled by TeaVM.
+ * Extensions are found via {@link ServiceLoader}, so the module contains all extensions registered
+ * in the class path, the host chooses ones to actually use.
+ *
+ * @see org.teavm.extension.bridge
+ */
+public final class ExtensionGuest {
+    private ExtensionGuest() {
+    }
+
+    @JSExport
+    public static BridgeGuest create(BridgeHost host, String[] providers) {
+        var providerSet = new HashSet<>(Arrays.asList(providers));
+        var env = new GuestEnvironment(host);
+        return new GuestBridge(env, load(ReflectionPolicy.class, providerSet),
+                load(ResourcesPolicy.class, providerSet));
+    }
+
+    private static <T> List<T> load(Class<T> type, Set<String> providers) {
+        var result = new ArrayList<T>();
+        for (var provider : ServiceLoader.load(type)) {
+            if (providers.contains(provider.getClass().getName())) {
+                result.add(provider);
+            }
+        }
+        return result;
+    }
+}
