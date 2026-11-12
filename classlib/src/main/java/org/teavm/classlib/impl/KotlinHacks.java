@@ -15,6 +15,7 @@
  */
 package org.teavm.classlib.impl;
 
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import org.teavm.model.AccessLevel;
@@ -26,9 +27,11 @@ import org.teavm.model.ClassHolderTransformerContext;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ElementModifier;
+import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReader;
 import org.teavm.model.Program;
+import org.teavm.model.ValueType;
 import org.teavm.model.emit.ProgramEmitter;
 import org.teavm.model.instructions.ExitInstruction;
 import org.teavm.model.instructions.StringConstantInstruction;
@@ -46,6 +49,10 @@ public class KotlinHacks implements ClassHolderTransformer {
             patchStrings(cls, context.getHierarchy().getClassSource());
         } else if (cls.getName().equals("kotlin.jvm.internal.ClassReference$Companion")) {
             patchClassReferenceCompanion(cls, context.getHierarchy());
+        } else if (cls.getName().equals("kotlin.jvm.internal.ClassReference")) {
+            patchClassReference(cls, context.getHierarchy());
+        } else if (cls.getName().equals(KotlinSupertypes.class.getName())) {
+            patchKotlinTypeFactory(cls, context.getHierarchy());
         }
     }
 
@@ -109,6 +116,70 @@ public class KotlinHacks implements ClassHolderTransformer {
                 pe.var(1, Class.class).invokeVirtual("getName", String.class).returnValue();
             }
         }
+    }
+
+    private void patchClassReference(ClassHolder cls, ClassHierarchy hierarchy) {
+        var method = cls.getMethod(new MethodDescriptor("getSupertypes", List.class));
+        if (method == null) {
+            return;
+        }
+        var pe = ProgramEmitter.create(method, hierarchy);
+        var javaClass = pe.var(0, cls).invokeVirtual("getJClass", Class.class);
+        var supertypes = pe.invoke(KotlinSupertypes.class, "getSupertypes", List.class, javaClass);
+        pe.when(supertypes.isNull()).thenDo(() ->
+                pe.construct("kotlin.jvm.KotlinReflectionNotSupportedError").raise());
+        supertypes.returnValue();
+    }
+
+    private void patchKotlinTypeFactory(ClassHolder cls, ClassHierarchy hierarchy) {
+        var method = cls.getMethod(new MethodDescriptor("typeOf", Class.class, Object.class));
+        method.getModifiers().remove(ElementModifier.NATIVE);
+        var pe = ProgramEmitter.create(method, hierarchy);
+        pe.invoke("kotlin.jvm.internal.Reflection", "typeOf", ValueType.object("kotlin.reflect.KType"),
+                pe.var(1, Class.class)).returnValue();
+    }
+
+    static class KotlinSupertypes {
+        static List<Object> getSupertypes(Class<?> type) {
+            if (type == Object.class) {
+                return List.of();
+            }
+            if (type.isArray() || type.isPrimitive()) {
+                return null;
+            }
+
+            var parent = type.getSuperclass();
+            var interfaces = type.getInterfaces();
+            var supertypes = new ArrayList<Object>(interfaces.length + 1);
+            var hasSuperclass = parent != null && parent != Object.class;
+            if (hasSuperclass) {
+                if (hasTypeParameters(parent)) {
+                    return null;
+                }
+                supertypes.add(typeOf(parent));
+            }
+            for (var iface : interfaces) {
+                if (hasTypeParameters(iface)) {
+                    return null;
+                }
+                supertypes.add(typeOf(iface));
+            }
+            if (!hasSuperclass) {
+                supertypes.add(typeOf(Object.class));
+            }
+            return supertypes;
+        }
+
+        // The erased Java hierarchy cannot recover Kotlin's generic supertype arguments.
+        private static boolean hasTypeParameters(Class<?> type) {
+            if (type.getTypeParameters().length != 0) {
+                return true;
+            }
+            var owner = type.getDeclaringClass();
+            return owner != null && !Modifier.isStatic(type.getModifiers()) && hasTypeParameters(owner);
+        }
+
+        private static native Object typeOf(Class<?> type);
     }
 
     static class KotlinStrings {
