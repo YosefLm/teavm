@@ -32,6 +32,7 @@ public class TInputStreamReader extends TReader {
     private char[] outData = new char[1024];
     private TCharBuffer outBuffer = TCharBuffer.wrap(outData);
     private boolean streamEof;
+    private boolean decodingFinished;
     private boolean eof;
 
     public TInputStreamReader(TInputStream in, String charsetName) throws TUnsupportedEncodingException {
@@ -122,44 +123,36 @@ public class TInputStreamReader extends TReader {
         outBuffer.compact();
         var readSomething = !force;
         var hasAvailable = true;
-        var decoderCalled = false;
-        while (true) {
-            if (inBuffer.hasRemaining()) {
+        while (!decodingFinished) {
+            if (inBuffer.hasRemaining() || streamEof) {
                 var posBefore = outBuffer.position();
                 var result = decoder.decode(inBuffer, outBuffer, streamEof);
-                decoderCalled = true;
                 readSomething |= outBuffer.position() > posBefore;
                 if (result.isOverflow()) {
                     break;
-                } else if (!result.isUnderflow()) {
-                    continue;
+                }
+                if (result.isError()) {
+                    result.throwException();
+                }
+                if (streamEof) {
+                    decodingFinished = true;
+                    break;
                 }
             }
             if (stream.available() <= 0 && readSomething) {
                 hasAvailable = false;
                 break;
             }
-            if (!fillReadBuffer()) {
-                var posBefore = outBuffer.position();
-                decoder.decode(inBuffer, outBuffer, true);
-                decoderCalled = true;
-                readSomething |= outBuffer.position() > posBefore;
-                break;
-            }
+            fillReadBuffer();
         }
-        if (!inBuffer.hasRemaining() && streamEof) {
-            if (!decoderCalled || decoder.flush(outBuffer).isUnderflow()) {
-                eof = true;
-            }
+        if (decodingFinished) {
+            eof = decoder.flush(outBuffer).isUnderflow();
         }
         outBuffer.flip();
         return hasAvailable;
     }
 
-    private boolean fillReadBuffer() throws IOException {
-        if (streamEof) {
-            return false;
-        }
+    private void fillReadBuffer() throws IOException {
         inBuffer.compact();
         while (inBuffer.hasRemaining()) {
             int bytesRead = stream.read(inBuffer.array(), inBuffer.position(), inBuffer.remaining());
@@ -172,7 +165,6 @@ public class TInputStreamReader extends TReader {
             }
         }
         inBuffer.flip();
-        return true;
     }
 
     @Override

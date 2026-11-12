@@ -116,6 +116,34 @@ public class InputStreamReaderTest {
     }
 
     @Test
+    public void finishesDecodingWhenEofIsDiscoveredAfterReadingChars() throws IOException {
+        var text = "short UTF-8 stream";
+        var stream = new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)) {
+            private boolean observedEof;
+
+            @Override
+            public synchronized int available() {
+                return observedEof ? 0 : 1;
+            }
+
+            @Override
+            public synchronized int read(byte[] bytes, int offset, int length) {
+                var count = super.read(bytes, offset, length);
+                observedEof = count < 0;
+                return count;
+            }
+        };
+
+        try (var reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+            var chars = new char[64];
+            assertEquals(text.length(), reader.read(chars));
+            assertEquals(text, new String(chars, 0, text.length()));
+            assertEquals(-1, reader.read());
+            assertEquals(-1, reader.read(chars));
+        }
+    }
+
+    @Test
     public void nonGreedyRead() throws IOException {
         var in = new TestInputStream();
         var reader = new InputStreamReader(in, StandardCharsets.UTF_8);
